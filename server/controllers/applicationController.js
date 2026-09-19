@@ -83,9 +83,32 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ message: 'Payment verification failed' });
     }
 
-    await Application.findByIdAndUpdate(applicationId, { paymentStatus: 'paid' });
+    // Payment verified: mark paid AND auto-approve — no manual admin review step required
+    const application = await Application.findByIdAndUpdate(
+      applicationId,
+      { paymentStatus: 'paid', status: 'approved' },
+      { new: true }
+    ).populate('exam');
 
-    res.json({ message: 'Payment verified successfully' });
+    if (!application) return res.status(404).json({ message: 'Application not found' });
+
+    await createNotification(
+      application.student,
+      'Application Approved',
+      `Your payment for "${application.exam.title}" was successful and your application has been automatically approved.`,
+      'exam',
+      true
+    );
+
+    await logAction(
+      application.student,
+      'APPLICATION_AUTO_APPROVED',
+      'Application',
+      application._id,
+      `Auto-approved after successful payment for exam "${application.exam.title}"`
+    );
+
+    res.json({ message: 'Payment verified and application approved', application });
   } catch (error) {
     res.status(500).json({ message: 'Payment verification error', error: error.message });
   }
@@ -117,6 +140,7 @@ const downloadHallTicket = async (req, res) => {
 
 const approveApplication = async (req, res) => {
   try {
+    // Retained for manual override (e.g., admin needs to reject a fraudulent/duplicate payment)
     const { status } = req.body;
     const application = await Application.findByIdAndUpdate(
       req.params.id,
@@ -129,9 +153,9 @@ const approveApplication = async (req, res) => {
     await createNotification(
       application.student,
       `Application ${status}`,
-      `Your application for "${application.exam.title}" has been ${status}.`,
+      `Your application for "${application.exam.title}" has been ${status} by an administrator.`,
       'exam',
-      true // also send email
+      true
     );
 
     await logAction(
@@ -139,7 +163,7 @@ const approveApplication = async (req, res) => {
       `APPLICATION_${status.toUpperCase()}`,
       'Application',
       application._id,
-      `Application for exam "${application.exam.title}" was ${status}`
+      `Application for exam "${application.exam.title}" was manually ${status} by admin`
     );
 
     res.json({ message: `Application ${status}`, application });
@@ -176,13 +200,11 @@ const allocateSeats = async (req, res) => {
 
       seatCounter++;
 
-      // Move to next center once current one hits capacity
       if (seatCounter > currentCenter.capacity) {
         centerIndex++;
         seatCounter = 1;
 
         if (centerIndex >= centers.length) {
-          // Ran out of center capacity — remaining apps stay unallocated
           break;
         }
       }
