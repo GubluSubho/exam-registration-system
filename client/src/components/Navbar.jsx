@@ -46,7 +46,8 @@ function Navbar() {
   return (
     <nav className="bg-white shadow-md px-6 py-3 flex justify-between items-center">
       <div className="flex gap-5 items-center">
-        <span className="font-bold text-gray-800">Exam System</span>
+        <img src="/logo512.png" alt="ExamNest" className="w-7 h-7 rounded-md" />
+<span className="font-bold text-gray-800">ExamNest</span>
         {links.map((link) => (
           <Link key={link.to} to={link.to} className="text-sm text-gray-600 hover:text-blue-600">
             {link.label}
